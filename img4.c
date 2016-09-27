@@ -32,6 +32,10 @@
 
 #define panic(fn, args...) do { fprintf(stderr, fn args); exit(1); } while (0)
 
+#ifdef iOS10
+#include "lzfse.h"
+#endif
+
 typedef enum {
     DictMANP,
     DictOBJP
@@ -48,6 +52,9 @@ typedef struct {
     DERItem version;    // "iBoot-2261.3.33"
     DERItem imageData;
     DERItem keybag;
+#ifdef iOS10
+    DERItem compression;
+#endif
     DERByte full_digest[RESERVE_DIGEST_SPACE];
 } TheImg4Payload;
 
@@ -87,6 +94,20 @@ const DERItemSpec DERImg4ItemSpecs[4] = {
     { 3 * sizeof(DERItem), ASN1_CONSTRUCTED|ASN1_CONTEXT_SPECIFIC | 1,  DER_DEC_OPTIONAL }      // CONS(SEQUENCE(restoreInfo))
 };
 
+#ifdef iOS10
+const DERItemSpec DERImg4PayloadItemSpecs[6] = {
+    { 0 * sizeof(DERItem), ASN1_IA5_STRING,                             0 },                    // "IM4P"
+    { 1 * sizeof(DERItem), ASN1_IA5_STRING,                             0 },                    // "illb"
+    { 2 * sizeof(DERItem), ASN1_IA5_STRING,                             0 },                    // "iBoot-2261.3.33"
+    { 3 * sizeof(DERItem), ASN1_OCTET_STRING,                           0 },                    // binary data
+    { 4 * sizeof(DERItem), ASN1_OCTET_STRING,                           DER_DEC_OPTIONAL },     // keybag
+    { 5 * sizeof(DERItem), ASN1_CONSTR_SEQUENCE,                        DER_DEC_OPTIONAL }      // iOS10 compression info
+};
+const DERItemSpec DERImg4PayloadItemSpecs10c[2] = {
+    { 0 * sizeof(DERItem), ASN1_INTEGER,                                0 },
+    { 1 * sizeof(DERItem), ASN1_INTEGER,                                0 }
+};
+#else
 const DERItemSpec DERImg4PayloadItemSpecs[5] = {
     { 0 * sizeof(DERItem), ASN1_IA5_STRING,                             0 },                    // "IM4P"
     { 1 * sizeof(DERItem), ASN1_IA5_STRING,                             0 },                    // "illb"
@@ -94,6 +115,7 @@ const DERItemSpec DERImg4PayloadItemSpecs[5] = {
     { 3 * sizeof(DERItem), ASN1_OCTET_STRING,                           0 },                    // binary data
     { 4 * sizeof(DERItem), ASN1_OCTET_STRING,                           DER_DEC_OPTIONAL }      // keybag
 };
+#endif
 
 const DERItemSpec DERImg4ManifestItemSpecs[5] = {
     { 0 * sizeof(DERItem), ASN1_IA5_STRING,                             0 },                    // "IM4M"
@@ -229,7 +251,11 @@ DERImg4DecodePayload(const DERItem *a1, TheImg4Payload *a2)
         return DR_ParamErr;
     }
 
+#ifdef iOS10
+    rv = DERParseSequence(a1, 6, DERImg4PayloadItemSpecs, a2, 0);
+#else
     rv = DERParseSequence(a1, 5, DERImg4PayloadItemSpecs, a2, 0);
+#endif
     if (rv) {
         return rv;
     }
@@ -610,6 +636,40 @@ main(int argc, char **argv)
 #endif
         }
 
+#ifdef iOS10
+        if (img4->payload.compression.data && img4->payload.compression.length) {
+            DERItem tmp[2];
+            uint32_t deco = 0;
+            uint64_t usize = 0;
+            if (DERParseSequenceContent(&img4->payload.compression, 2, DERImg4PayloadItemSpecs10c, tmp, 0) ||
+                DERParseInteger(&tmp[0], &deco) || DERParseInteger64(&tmp[1], &usize)) {
+                fprintf(stderr, "[e] cannot get decompression info\n");
+                goto err;
+            }
+            if (deco == 1 && what[1] == 'i') {
+                size_t asize = lzfse_decode_scratch_size();
+                unsigned char *dec, *aux = malloc(asize);
+                if (!aux) {
+                    fprintf(stderr, "[e] out of memory %zu\n", asize);
+                    goto err;
+                }
+                dec = malloc(usize + 1);
+                if (!dec) {
+                    fprintf(stderr, "[e] out of memory %llu\n", usize + 1);
+                    free(aux);
+                    goto err;
+                }
+                outlen = lzfse_decode_buffer(dec, usize + 1, output, outlen, aux);
+                free(aux);
+                if (outlen != usize) {
+                    fprintf(stderr, "[e] decompression error\n");
+                    free(dec);
+                    goto err;
+                }
+                OUTSET(dec);
+            }
+        }
+#endif
         decompress = (DWORD_BE(output, 0) == 'comp' && DWORD_BE(output, 4) == 'lzss');
         if (decompress && what[1] == 'i') {
             uint32_t csize = DWORD_BE(output, 16);

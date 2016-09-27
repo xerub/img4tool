@@ -5,13 +5,13 @@
 CC = gcc
 CFLAGS = -Wall -W -pedantic
 CFLAGS += -std=c99 -Wno-variadic-macros -Wno-multichar -Wno-four-char-constants
-CFLAGS += -O2 -m64 -I. -g
+CFLAGS += -O2 -m64 -I. -g -DiOS10 -Ilzfse/src
 CFLAGS += -DDER_MULTIBYTE_TAGS=1 -DDER_TAG_SIZE=8
 CFLAGS += -D__unused="__attribute__((unused))"
 
 LD = gcc
-LDFLAGS = -m64 -g
-LDLIBS =
+LDFLAGS = -m64 -g -Llzfse/build/bin
+LDLIBS = -llzfse
 
 SOURCES = \
 	libDER/DER_Decode.c \
