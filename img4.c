@@ -499,11 +499,10 @@ str2hex(int buflen, unsigned char *buf, const char *str)
             nibble -= '0';
         } else {
             nibble |= 0x20;
-            if (nibble >= 'a' && nibble <= 'f') {
-                nibble -= 'a' - 10;
-            } else {
+            if (nibble < 'a' || nibble > 'f') {
                 break;
             }
+            nibble -= 'a' - 10;
         }
         if (seq >= 0) {
             *buf++ = (seq << 4) | nibble;
