@@ -179,6 +179,39 @@ const DERItem AppleSecureBootCA = { (DERByte *)"\x13)Apple Secure Boot Certifica
 /*****************************************************************************/
 
 int
+DERImg4DecodeFindInSequence(unsigned char *a1, unsigned char *a2, DERTag tag, DERItem *a5)
+{
+    DERDecodedInfo currDecoded;
+    DERSequence derSeq;
+
+    derSeq.nextItem = a1;
+    derSeq.end = a2;
+
+    do {
+        int rv = DERDecodeSeqNext(&derSeq, &currDecoded);
+        if (rv) {
+            return rv;
+        }
+    } while (currDecoded.tag != tag);
+
+    *a5 = currDecoded.content;
+    return 0;
+}
+
+int
+DERImg4DecodeContentFindItemWithTag(const DERItem *a1, DERTag tag, DERItem *a4)
+{
+    int rv;
+    DERSequence derSeq;
+
+    rv = DERDecodeSeqContentInit(a1, &derSeq);
+    if (rv) {
+        return rv;
+    }
+    return DERImg4DecodeFindInSequence(derSeq.nextItem, derSeq.end, tag, a4);
+}
+
+int
 DERImg4DecodeTagCompare(const DERItem *a1, uint32_t nameTag)
 {
     uint32_t var_14;
@@ -324,6 +357,45 @@ DERImg4DecodeRestoreInfo(const DERItem *a1, TheImg4RestoreInfo *a2)
 }
 
 int
+DERImg4DecodeFindProperty(const DERItem *a1, DERTag etag, DERTag atag, DERMonster *dest)
+{
+    int rv;
+    DERItemSpec var_70[2];
+    uint32_t var_3C;
+    DERItem var_38;
+
+    rv = DERImg4DecodeContentFindItemWithTag(a1, etag, &var_38);
+    if (rv) {
+        return rv;
+    }
+
+    var_70[0].offset = 0;
+    var_70[0].tag = ASN1_IA5_STRING;
+    var_70[0].options = 0;
+    var_70[1].offset = sizeof(DERMonster);
+    var_70[1].tag = atag;
+    var_70[1].options = 0;
+
+    rv = DERParseSequence(&var_38, 2, var_70, dest, 0);
+    if (rv) {
+        return rv;
+    }
+
+    rv = DERParseInteger(&dest[0].item, &var_3C);
+    if (rv) {
+        return rv;
+    }
+
+    if ((E000000000000000 | var_3C) != etag) {
+        return DR_UnexpectedTag;
+    }
+
+    dest[0].tag = etag | E000000000000000;
+    dest[1].tag = atag;
+    return 0;
+}
+
+int
 Img4DecodeGetPayload(TheImg4 *img4, DERItem *a2)
 {
     if (img4 == NULL || a2 == NULL) {
@@ -368,6 +440,36 @@ Img4DecodeManifestExists(TheImg4 *img4, bool *exists)
         return DR_ParamErr;
     }
     *exists = (img4->manifestRaw.data != NULL);
+    return 0;
+}
+
+int
+Img4DecodeGetRestoreInfoNonce(TheImg4 *img4, DERTag etag, DERTag atag, DERMonster *dest)
+{
+    if (img4 == NULL || dest == NULL) {
+        return DR_ParamErr;
+    }
+    if (img4->restoreInfo.nonce.data == NULL || img4->restoreInfo.nonce.length == 0) {
+        return 0;
+    }
+    return DERImg4DecodeFindProperty(&img4->restoreInfo.nonce, etag, atag, dest);
+}
+
+int
+Img4DecodeGetRestoreInfoData(TheImg4 *img4, DERTag tag, DERByte **a4, DERSize *a5)
+{
+    int rv;
+    DERMonster var_40[2];
+
+    if (img4 == NULL || a4 == NULL || a5 == NULL) {
+        return DR_ParamErr;
+    }
+    rv = Img4DecodeGetRestoreInfoNonce(img4, E000000000000000 | tag, ASN1_OCTET_STRING, var_40);
+    if (rv) {
+        return rv;
+    }
+    *a4 = var_40[1].item.data;
+    *a5 = var_40[1].item.length;
     return 0;
 }
 
