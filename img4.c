@@ -103,10 +103,6 @@ const DERItemSpec DERImg4PayloadItemSpecs[6] = {
     { 4 * sizeof(DERItem), ASN1_OCTET_STRING,                           DER_DEC_OPTIONAL },     // keybag
     { 5 * sizeof(DERItem), ASN1_CONSTR_SEQUENCE,                        DER_DEC_OPTIONAL }      // iOS10 compression info
 };
-const DERItemSpec DERImg4PayloadItemSpecs10c[2] = {
-    { 0 * sizeof(DERItem), ASN1_INTEGER,                                0 },
-    { 1 * sizeof(DERItem), ASN1_INTEGER,                                0 }
-};
 #else
 const DERItemSpec DERImg4PayloadItemSpecs[5] = {
     { 0 * sizeof(DERItem), ASN1_IA5_STRING,                             0 },                    // "IM4P"
@@ -640,7 +636,8 @@ main(int argc, char **argv)
             DERItem tmp[2];
             uint32_t deco = 0;
             uint64_t usize = 0;
-            if (DERParseSequenceContent(&img4->payload.compression, 2, DERImg4PayloadItemSpecs10c, tmp, 0) ||
+            /* XXX ugly hack: reuse DERRSAPubKeyPKCS1ItemSpecs */
+            if (DERParseSequenceContent(&img4->payload.compression, 2, DERRSAPubKeyPKCS1ItemSpecs, tmp, 0) ||
                 DERParseInteger(&tmp[0], &deco) || DERParseInteger64(&tmp[1], &usize)) {
                 fprintf(stderr, "[e] cannot get decompression info\n");
                 goto err;
